@@ -70,6 +70,13 @@ mkdir -p ~/.devin-bridge/workspace && cd ~/.devin-bridge/workspace && devin   # 
 
 Add a custom OpenAI-compatible provider pointing at `http://127.0.0.1:8320/v1` with `BRIDGE_API_KEY` as its key. Send `"stream": false` explicitly if the gateway treats a missing `stream` as streaming. Keep Devin models out of automatic fallback chains: they are slower and consume quota.
 
+## Security
+
+- Bind to `127.0.0.1` (default) or a private network. There is no rate limiting; do not expose it to the internet.
+- `BRIDGE_API_KEY` is mandatory. Anyone holding it spends your Devin quota.
+- The CLI agent normally has file, shell and web tools. The bridge writes deny rules into `DEVIN_CLI_WORKDIR/.devin/config.json` on every call so those tools are blocked; the agent can only answer in text. Do not remove that file or point `DEVIN_CLI_WORKDIR` at a real project.
+- Request bodies are capped at 8 MiB (`BRIDGE_MAX_BODY`).
+
 ## Limitations
 
 - Devin is an agent, not a raw model; replies may read like an agent's.

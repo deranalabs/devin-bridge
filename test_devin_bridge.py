@@ -250,6 +250,9 @@ class BridgeTest(unittest.TestCase):
             req = urllib.request.Request(f"{self.url}/models", headers={"Authorization": "Bearer secret"})
             ids = [m["id"] for m in json.load(urllib.request.urlopen(req))["data"]]
             self.assertIn("devin-cli/alpha", ids)
+            deny = json.load(open(os.path.join(d, "ws", ".devin", "config.json")))["permissions"]["deny"]
+            self.assertIn("Read(**)", deny)
+            self.assertIn("exec", deny)
             big = "x" * 300_000 + "\nlast"  # larger than one argv entry may be on Linux
             out = json.loads(post(f"{self.url}/chat/completions", {
                 "model": "devin-cli/alpha", "messages": [{"role": "user", "content": big}]}, "secret").read())
@@ -261,6 +264,16 @@ class BridgeTest(unittest.TestCase):
             self.assertIn("untrusted workspace", json.loads(c.exception.read())["error"]["message"])
         finally:
             os.environ.pop("DEVIN_CLI_BIN"), os.environ.pop("DEVIN_CLI_WORKDIR")
+
+    def test_body_too_large(self):
+        old = b.MAX_BODY
+        b.MAX_BODY = 100
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as c:
+                post(f"{self.url}/chat/completions", {"messages": [{"role": "user", "content": "x" * 500}]}, "secret")
+            self.assertEqual(c.exception.code, 413)
+        finally:
+            b.MAX_BODY = old
 
     def test_bad_body(self):
         with self.assertRaises(urllib.error.HTTPError) as c:

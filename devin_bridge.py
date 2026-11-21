@@ -32,6 +32,7 @@ in an empty workspace directory.
   DEVIN_CLI_CONCURRENCY  parallel CLI calls (default 4)
 """
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -68,6 +69,7 @@ DONE_DETAIL = {"waiting_for_user", "finished", "waiting_for_approval"}
 SESSIONS = {}
 WARM = []  # spare booted sessions
 LOCK = threading.Lock()
+MAX_BODY = int(os.environ.get("BRIDGE_MAX_BODY", 8 * 1024 * 1024))
 CLI_SEM = threading.BoundedSemaphore(int(os.environ.get("DEVIN_CLI_CONCURRENCY", "4")))
 CLI_MODELS = {"at": 0, "ids": []}
 
@@ -287,6 +289,28 @@ def cli_bin():
     return cfg("DEVIN_CLI_BIN", "devin")
 
 
+# The CLI agent can read files, run commands and fetch URLs. A chat bridge needs none of that, and
+# anyone holding BRIDGE_API_KEY (or a prompt injection) could otherwise read the host's secrets.
+LOCKDOWN = {"permissions": {"deny": [
+    "Read(**)", "Write(**)", "Exec(*)", "exec", "write", "edit", "read", "grep", "find_file_by_name",
+    "notebook_read", "notebook_edit", "webfetch", "web_search", "browser_preview", "run_subagent",
+    "mcp_call_tool", "skill", "write_to_process", "read_page_content", "request_scope"]}}
+
+
+def lock_workspace(workdir):
+    """Write deny rules into the workspace's project config so the CLI agent has no usable tools."""
+    path = os.path.join(workdir, ".devin", "config.json")
+    want = json.dumps(LOCKDOWN, indent=2)
+    try:
+        if open(path).read() == want:
+            return
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(want)
+
+
 def cli_workdir():
     return os.path.expanduser(cfg("DEVIN_CLI_WORKDIR", "~/.devin-bridge/workspace"))
 
@@ -297,6 +321,7 @@ def cli_models():
         try:
             workdir = cli_workdir()
             os.makedirs(workdir, exist_ok=True)
+            lock_workspace(workdir)
             p = subprocess.run([cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "true"),
                                 "-p", "--model", "zzz", "--", "x"],
                                capture_output=True, text=True, timeout=30, cwd=workdir)
@@ -312,6 +337,7 @@ def run_cli(norm, model):
     name = model.split("/", 1)[1]
     workdir = cli_workdir()
     os.makedirs(workdir, exist_ok=True)
+    lock_workspace(workdir)
     box = {}
 
     def work():
@@ -486,7 +512,7 @@ class Handler(BaseHTTPRequestHandler):
     def authed(self):
         key = cfg("BRIDGE_API_KEY")
         sent = self.headers.get("x-api-key") or (self.headers.get("Authorization") or "").removeprefix("Bearer ")
-        if key and sent != key:
+        if key and not hmac.compare_digest(sent.encode(), key.encode()):
             self.error(401, "invalid api key", "invalid_request_error")
             return False
         return True
@@ -526,7 +552,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authed():
             return
         try:
-            req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            length = int(self.headers.get("Content-Length", 0))
+            if length > MAX_BODY:
+                return self.error(413, "request body too large", "invalid_request_error", is_anthropic)
+            req = json.loads(self.rfile.read(length) or b"{}")
             norm = (norm_anthropic if is_anthropic else norm_openai)(req)
         except BadRequest as e:
             return self.error(400, str(e), "invalid_request_error", is_anthropic)
