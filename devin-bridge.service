@@ -1,0 +1,11 @@
+[Unit]
+Description=Devin OpenAI/Anthropic-compatible bridge
+After=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/devin-bridge/env
+ExecStart=/usr/bin/python3 %h/apps/devin-bridge/devin_bridge.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
