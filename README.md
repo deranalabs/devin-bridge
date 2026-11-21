@@ -1,92 +1,82 @@
 # devin-bridge
 
-Jembatan OpenAI + Anthropic API untuk akun **Devin** milikmu sendiri. Satu file Python, tanpa dependensi (stdlib saja).
+OpenAI- and Anthropic-compatible API for your own [Devin](https://devin.ai) account. Single Python file, standard library only.
 
 ```
-Klien (Hermes, Cline, 9router, curl)  ──OpenAI / Anthropic──►  devin-bridge  ──►  Devin CLI   (cepat, banyak model)
-                                                                              └─►  Devin API   (sesi cloud, lambat)
+OpenAI / Anthropic client  ──►  devin-bridge  ──►  Devin CLI   (fast, many models)
+                                              └─►  Devin API   (cloud sessions)
 ```
 
-> Tidak resmi dan tidak berafiliasi dengan Cognition/Devin. Pakai **akun dan token milikmu sendiri**. Jangan membagikan endpoint bridge-mu ke orang lain: itu memakai kuota ACU akunmu, dan berbagi akun bisa melanggar syarat layanan Devin. Untuk teman: biarkan masing-masing menjalankan bridge sendiri dengan akun sendiri.
+> Unofficial; not affiliated with Cognition. Run it with your own account and token, and do not expose it to other people: requests consume your Devin quota, and sharing an account may violate Devin's terms.
 
-## Endpoint
+## Endpoints
 
-| Endpoint | Format |
+| Endpoint | Description |
 |---|---|
-| `POST /v1/chat/completions` | OpenAI Chat Completions (stream, tools, `stream_options.include_usage`) |
-| `POST /v1/messages` | Anthropic Messages (stream, `tool_use`/`tool_result`) |
-| `GET /v1/models` | Daftar model (format Anthropic kalau header `anthropic-version`/`x-api-key` dikirim) |
-| `GET /health` | Cek hidup |
+| `POST /v1/chat/completions` | OpenAI Chat Completions: streaming, tools, `stream_options.include_usage` |
+| `POST /v1/messages` | Anthropic Messages: streaming, `tool_use` / `tool_result` |
+| `GET /v1/models` | Model list (Anthropic format when `anthropic-version` or `x-api-key` is sent) |
+| `GET /health` | Liveness check |
 
-## Dua jalur backend
+## Models
 
-| Model | Cara kerja | Kecepatan | Catatan |
+| Model | Backend | Latency | Notes |
 |---|---|---|---|
-| `devin-cli/<nama>` | Menjalankan `devin -p --model <nama>` | 2–7 detik | Pilih model apa pun yang dikenali akunmu (`claude-*`, `gpt-*`, `gemini-*`, `kimi-*`, `swe-*`, ...). Tanpa sesi: seluruh percakapan dikirim tiap request. **Disarankan.** |
-| `devin`, `devin-fast`, `devin-lite`, `devin-ultra`, `devin-fusion` | Membuat sesi cloud lewat Devin API v3 | ~10 detik kalau sesi cadangan hangat, ~5 menit kalau dingin | Untuk tugas agent panjang. Memakai ACU. |
+| `devin-cli/<name>` | `devin -p --model <name>` | 2–7 s | Any model your account supports (list is read from the CLI). Stateless: the full conversation is sent on each request. **Recommended.** |
+| `devin`, `devin-fast`, `devin-lite`, `devin-ultra`, `devin-fusion` | Devin API v3 sessions | ~10 s warm, ~5 min cold | For long agent tasks. Consumes ACUs. |
 
-Daftar `devin-cli/*` dibaca otomatis dari CLI-mu, jadi selalu sesuai akun.
+## Quick start
 
-## Pasang
-
-Syarat: Python 3.9+. Untuk jalur CLI: [Devin CLI](https://docs.devin.ai/cli/index.md) sudah login (`devin auth login`; di server tanpa browser pakai `--force-manual-token-flow`).
+Requirements: Python 3.9+. For `devin-cli/*`, an installed and authenticated [Devin CLI](https://docs.devin.ai/cli/index.md) (`devin auth login`).
 
 ```bash
-git clone <repo-ini> && cd devin-bridge
-cp .env.example .env     # isi nilainya
+git clone https://github.com/deranalabs/devin-bridge && cd devin-bridge
+cp .env.example .env        # set BRIDGE_API_KEY at minimum
 set -a; . ./.env; set +a
 python3 devin_bridge.py
 ```
 
-Cek:
-
 ```bash
 curl -s localhost:8320/v1/chat/completions \
   -H "Authorization: Bearer $BRIDGE_API_KEY" -H "Content-Type: application/json" \
-  -d '{"model":"devin-cli/swe-2-flash","messages":[{"role":"user","content":"say hi"}]}'
+  -d '{"model":"devin-cli/swe-2-flash","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Sebagai service (Linux, systemd user): salin `devin-bridge.service`, ubah path, lalu `systemctl --user enable --now devin-bridge`.
+To run as a service, adapt `devin-bridge.service` (systemd user unit).
 
-## Konfigurasi (env)
+## Configuration
 
-| Variabel | Default | Fungsi |
+| Variable | Default | Description |
 |---|---|---|
-| `BRIDGE_API_KEY` | – | **Wajib diisi.** Key yang harus dikirim klien (`Authorization: Bearer` atau `x-api-key`). |
-| `BRIDGE_HOST` / `BRIDGE_PORT` | `127.0.0.1` / `8320` | Jangan bind ke `0.0.0.0` tanpa firewall atau tailnet. |
-| `DEVIN_API_KEY` | – | Token service user `cog_...` (hanya untuk jalur cloud). |
-| `DEVIN_ORG_ID` | – | `org-...`, ada di Settings → Devin API (hanya jalur cloud). |
-| `DEVIN_CLI_BIN` | `devin` | Path binary CLI. |
-| `DEVIN_CLI_WORKDIR` | `~/.devin-bridge/workspace` | Folder kosong tempat CLI dijalankan. |
-| `DEVIN_CLI_RESPECT_TRUST` | `false` | Melewati pengecekan workspace trust. Aman hanya karena foldernya kosong dan CLI berjalan dalam mode baca-saja (`--permission-mode auto`). Set `true` kalau mau trust manual (jalankan `devin` interaktif di folder itu sekali). |
-| `DEVIN_CLI_CONCURRENCY` | `4` | Panggilan CLI paralel. |
-| `DEVIN_CLI_TIMEOUT` | `300` | Detik per panggilan CLI. |
-| `DEVIN_WARM` | `1` | Jaga satu sesi cloud cadangan agar balasan pertama cepat. `0` untuk mematikan. |
-| `DEVIN_MAX_ACU` | – | Batas ACU per sesi cloud. |
-| `DEVIN_TIMEOUT` / `DEVIN_POLL` | `900` / `3` | Batas tunggu dan interval polling sesi cloud. |
+| `BRIDGE_API_KEY` | – | **Required.** Clients send it as `Authorization: Bearer` or `x-api-key`. |
+| `BRIDGE_HOST`, `BRIDGE_PORT` | `127.0.0.1`, `8320` | Do not bind publicly without a firewall or private network. |
+| `DEVIN_CLI_BIN` | `devin` | Path to the CLI binary. |
+| `DEVIN_CLI_WORKDIR` | `~/.devin-bridge/workspace` | Empty directory the CLI runs in. |
+| `DEVIN_CLI_RESPECT_TRUST` | `false` | Skips the CLI workspace-trust check. Reasonable only because the directory is empty and the CLI runs read-only (`--permission-mode auto`). Set `true` to require trust (run `devin` once in that directory). |
+| `DEVIN_CLI_CONCURRENCY` | `4` | Parallel CLI calls; extra requests queue. |
+| `DEVIN_CLI_TIMEOUT` | `300` | Seconds per CLI call. |
+| `DEVIN_API_KEY`, `DEVIN_ORG_ID` | – | Service-user token (`cog_…`) and org ID. Cloud models only. |
+| `DEVIN_WARM` | `1` | Keep one pre-booted cloud session so the first reply is fast. |
+| `DEVIN_MAX_ACU` | – | Per-session ACU cap for cloud sessions. |
+| `DEVIN_TIMEOUT`, `DEVIN_POLL` | `900`, `3` | Cloud reply timeout and poll interval, in seconds. |
 
-## Pakai dengan 9router / Hermes
+## 9router and other gateways
 
-Di dashboard 9router: tambah provider **Custom OpenAI-compatible** (prefix `dv`, base URL `http://127.0.0.1:8320/v1`), lalu tambah connection berisi `BRIDGE_API_KEY`. Model jadi `dv/devin-cli/claude-sonnet-5.5` dst.
+Add a custom OpenAI-compatible provider pointing at `http://127.0.0.1:8320/v1` with `BRIDGE_API_KEY` as its key. Send `"stream": false` explicitly if the gateway treats a missing `stream` as streaming. Keep Devin models out of automatic fallback chains: they are slower and consume quota.
 
-Catatan 9router: kalau `stream` tidak dikirim, 9router membalas sebagai event-stream. Kirim `"stream": false` eksplisit untuk JSON biasa.
+## Limitations
 
-Jangan masukkan `dv/...` ke combo atau fallback chain: lambat dan memakai kuota.
+- Devin is an agent, not a raw model; replies may read like an agent's.
+- Tool calling is emulated: tools are described in the prompt and Devin answers with JSON, which the bridge converts to `tool_calls` / `tool_use`. Models occasionally answer in plain text instead. With tools, replies are buffered until complete (keepalive pings are still sent).
+- `usage` is an estimate (characters ÷ 4).
+- `stop`, `n`, `max_tokens`, `temperature` are ignored. `/v1/responses` is not implemented.
+- Cloud session state is in memory and is lost on restart. The CLI backend keeps no state.
+- Long conversations are resent on every request, so cost and latency grow with context.
 
-## Batasan yang jujur
-
-- Devin itu **agent**, bukan model mentah. Balasan bisa terdengar seperti agent.
-- **Tool calling hasil tiruan**: tool dijelaskan di prompt, Devin diminta membalas JSON, bridge mengubahnya jadi `tool_calls`/`tool_use`. Kadang model membalas teks atau mencoba alat internalnya sendiri. Dengan tools, balasan ditahan sampai lengkap (ping keepalive tetap dikirim).
-- `usage` hanya estimasi (karakter ÷ 4).
-- `stop`, `n`, `max_tokens`, `temperature` diabaikan. Belum ada `/v1/responses`.
-- Peta sesi cloud ada di memori: hilang saat restart. Jalur CLI tidak punya sesi.
-- Prompt CLI dikirim lewat file sementara (`--prompt-file`), jadi panjang percakapan tidak dibatasi ukuran argumen OS; batasnya konteks model.
-- Respons langsung memakai kuota akunmu.
-
-## Tes
+## Tests
 
 ```bash
 python3 -m unittest
 ```
 
-19 test, memakai Devin dan CLI tiruan (tidak memakai kuota). Cek terhadap Devin asli dilakukan manual.
+Uses fake Devin API and CLI servers, so it consumes no quota.
