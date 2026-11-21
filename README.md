@@ -44,6 +44,12 @@ curl -s localhost:8320/v1/chat/completions \
 
 To run as a service, adapt `devin-bridge.service` (systemd user unit).
 
+The CLI backend needs the workspace directory trusted once:
+
+```bash
+mkdir -p ~/.devin-bridge/workspace && cd ~/.devin-bridge/workspace && devin   # accept the trust prompt, then exit
+```
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -52,7 +58,7 @@ To run as a service, adapt `devin-bridge.service` (systemd user unit).
 | `BRIDGE_HOST`, `BRIDGE_PORT` | `127.0.0.1`, `8320` | Do not bind publicly without a firewall or private network. |
 | `DEVIN_CLI_BIN` | `devin` | Path to the CLI binary. |
 | `DEVIN_CLI_WORKDIR` | `~/.devin-bridge/workspace` | Empty directory the CLI runs in. |
-| `DEVIN_CLI_RESPECT_TRUST` | `false` | Skips the CLI workspace-trust check. Reasonable only because the directory is empty and the CLI runs read-only (`--permission-mode auto`). Set `true` to require trust (run `devin` once in that directory). |
+| `DEVIN_CLI_RESPECT_TRUST` | `true` | Require the CLI workspace to be trusted: run `devin` once in `DEVIN_CLI_WORKDIR` and accept. Set `false` to skip the check; reasonable only because the directory is empty and the CLI runs read-only (`--permission-mode auto`). |
 | `DEVIN_CLI_CONCURRENCY` | `4` | Parallel CLI calls; extra requests queue. |
 | `DEVIN_CLI_TIMEOUT` | `300` | Seconds per CLI call. |
 | `DEVIN_API_KEY`, `DEVIN_ORG_ID` | – | Service-user token (`cog_…`) and org ID. Cloud models only. |
@@ -72,6 +78,10 @@ Add a custom OpenAI-compatible provider pointing at `http://127.0.0.1:8320/v1` w
 - `stop`, `n`, `max_tokens`, `temperature` are ignored. `/v1/responses` is not implemented.
 - Cloud session state is in memory and is lost on restart. The CLI backend keeps no state.
 - Long conversations are resent on every request, so cost and latency grow with context.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ## Tests
 

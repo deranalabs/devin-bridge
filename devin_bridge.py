@@ -25,7 +25,8 @@ CLI backend (fast, many models): model "devin-cli/<name>" runs `devin -p --model
 in an empty workspace directory.
   DEVIN_CLI_BIN      default "devin"
   DEVIN_CLI_WORKDIR  default ~/.devin-bridge/workspace
-  DEVIN_CLI_RESPECT_TRUST  "false" (default) skips the trust check, safe only because the
+  DEVIN_CLI_RESPECT_TRUST  "true" (default) requires the workspace to be trusted (run `devin`
+                     once in it). "false" skips the check: reasonable only because the
                      workspace is an empty dir and the CLI runs in read-only 'auto' mode
   DEVIN_CLI_TIMEOUT  seconds per call (default 300)
   DEVIN_CLI_CONCURRENCY  parallel CLI calls (default 4)
@@ -296,7 +297,7 @@ def cli_models():
         try:
             workdir = cli_workdir()
             os.makedirs(workdir, exist_ok=True)
-            p = subprocess.run([cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "false"),
+            p = subprocess.run([cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "true"),
                                 "-p", "--model", "zzz", "--", "x"],
                                capture_output=True, text=True, timeout=30, cwd=workdir)
             m = re.search(r"Available:\s*(.+)", p.stdout + p.stderr)
@@ -319,7 +320,7 @@ def run_cli(norm, model):
         try:
             with f:
                 f.write(build_prompt(norm, CLI_PREFIX))
-            cmd = [cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "false"),
+            cmd = [cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "true"),
                    "-p", "--model", name, "--permission-mode", "auto", "--prompt-file", f.name]
             with CLI_SEM:
                 box["p"] = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
