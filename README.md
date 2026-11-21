@@ -80,7 +80,7 @@ Jangan masukkan `dv/...` ke combo atau fallback chain: lambat dan memakai kuota.
 - `usage` hanya estimasi (karakter ÷ 4).
 - `stop`, `n`, `max_tokens`, `temperature` diabaikan. Belum ada `/v1/responses`.
 - Peta sesi cloud ada di memori: hilang saat restart. Jalur CLI tidak punya sesi.
-- Prompt dikirim lewat argumen perintah, jadi percakapan sangat panjang bisa kena batas ukuran argumen OS.
+- Prompt CLI dikirim lewat file sementara (`--prompt-file`), jadi panjang percakapan tidak dibatasi ukuran argumen OS; batasnya konteks model.
 - Respons langsung memakai kuota akunmu.
 
 ## Tes

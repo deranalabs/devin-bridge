@@ -36,6 +36,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -310,12 +311,16 @@ def run_cli(norm, model):
     name = model.split("/", 1)[1]
     workdir = cli_workdir()
     os.makedirs(workdir, exist_ok=True)
-    cmd = [cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "false"),
-           "-p", "--model", name, "--permission-mode", "auto", "--", build_prompt(norm, CLI_PREFIX)]
     box = {}
 
     def work():
+        # prompt goes through a file: Linux caps a single argv entry at 128KB, long agent sessions exceed it
+        f = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False)
         try:
+            with f:
+                f.write(build_prompt(norm, CLI_PREFIX))
+            cmd = [cli_bin(), "--respect-workspace-trust", cfg("DEVIN_CLI_RESPECT_TRUST", "false"),
+                   "-p", "--model", name, "--permission-mode", "auto", "--prompt-file", f.name]
             with CLI_SEM:
                 box["p"] = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
                                           timeout=float(cfg("DEVIN_CLI_TIMEOUT", "300")))
@@ -323,6 +328,8 @@ def run_cli(norm, model):
             box["err"] = "devin cli timed out"
         except OSError as e:
             box["err"] = f"cannot run devin cli: {e}"
+        finally:
+            os.unlink(f.name)
 
     t = threading.Thread(target=work, daemon=True)
     t.start()

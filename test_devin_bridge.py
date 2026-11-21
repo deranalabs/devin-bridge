@@ -225,7 +225,8 @@ class BridgeTest(unittest.TestCase):
         path = os.path.join(d, "devin")
         open(path, "w").write(
             "#!/usr/bin/env python3\nimport sys\n"
-            "a = sys.argv\nm = a[a.index('--model') + 1]\nprompt = a[-1]\n"
+            "a = sys.argv\nm = a[a.index('--model') + 1]\n"
+            "prompt = open(a[a.index('--prompt-file') + 1]).read() if '--prompt-file' in a else a[-1]\n"
             "if m == 'zzz':\n    sys.stderr.write(\"Error: Unknown model: 'zzz'\\nAvailable: alpha, beta\\n\"); sys.exit(1)\n"
             "if m == 'bad':\n    sys.stderr.write('Error: Refusing to run in an untrusted workspace\\n'); sys.exit(1)\n"
             "last = prompt.splitlines()[-1]\n"
@@ -249,6 +250,10 @@ class BridgeTest(unittest.TestCase):
             req = urllib.request.Request(f"{self.url}/models", headers={"Authorization": "Bearer secret"})
             ids = [m["id"] for m in json.load(urllib.request.urlopen(req))["data"]]
             self.assertIn("devin-cli/alpha", ids)
+            big = "x" * 300_000 + "\nlast"  # larger than one argv entry may be on Linux
+            out = json.loads(post(f"{self.url}/chat/completions", {
+                "model": "devin-cli/alpha", "messages": [{"role": "user", "content": big}]}, "secret").read())
+            self.assertEqual(out["choices"][0]["message"]["content"], "cli-alpha: last")
             with self.assertRaises(urllib.error.HTTPError) as c:
                 post(f"{self.url}/chat/completions", {
                     "model": "devin-cli/bad", "messages": [{"role": "user", "content": "x"}]}, "secret")
